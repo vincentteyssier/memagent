@@ -1,8 +1,8 @@
 import logging, os, sys
 from dotenv import load_dotenv
 
-from telegram import Update, ForceReply, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from telegram.constants import ParseMode
 
 # initialize the logger
@@ -64,6 +64,25 @@ vector_store = FaissVectorStore(faiss_index=faiss_index)
 
 load_dotenv()
 
+FAISS_INDEX_PATH="faiss_index"
+
+# initialize LLM
+llm = AzureOpenAI(
+    openai_api_type=os.getenv('OPENAI_API_TYPE'),
+    openai_api_version=os.getenv('OPENAI_API_VERSION'),
+    openai_api_base=os.getenv('OPENAI_API_BASE'),
+    openai_api_key=os.getenv('OPENAI_API_KEY'),
+    deployment_name=os.getenv('DEPLOYMENT_NAME'), 
+    model_name=os.getenv('MODEL_NAME'), 
+    temperature = 0
+)
+
+# initialize embeddings 
+base_embeddings = LocalHuggingFaceEmbeddings('gte-base') 
+
+# load database in memory
+db = FAISS.load_local(FAISS_INDEX_PATH, base_embeddings)
+
 # Store bot screaming status
 screaming = False
 
@@ -73,12 +92,12 @@ FIRST_MENU = "<b>Menu</b>\n\nChoose your action:"
 # Pre-assign button text
 STORE_BUTTON = "Store Note"
 RETRIEVE_BUTTON = "Retrieve Memory"
-TUTORIAL_BUTTON = "Tutorial"
+
 
 # Build keyboards
 FIRST_MENU_MARKUP = InlineKeyboardMarkup([[
     InlineKeyboardButton(STORE_BUTTON, callback_data=STORE_BUTTON),
-    [InlineKeyboardButton(RETRIEVE_BUTTON, callback_data=RETRIEVE_BUTTON)]
+    InlineKeyboardButton(RETRIEVE_BUTTON, callback_data=RETRIEVE_BUTTON)
 ]])
 
 
@@ -91,39 +110,51 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Print to console
     print(f'{update.message.from_user.first_name} wrote {update.message.text}')
 
-    if screaming and update.message.text:
+    # index the message in the vector db
+
+    # return acknowledgement message
+    if update.message.text:
         await context.bot.send_message(
             update.message.chat_id,
             update.message.text.upper(),
             # To preserve the markdown, we attach entities (bold, italic...)
             entities=update.message.entities
         )
-    else:
-        # This is equivalent to forwarding, without the sender's name
-        await update.message.copy(update.message.chat_id)
-
-
-async def scream(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    This function handles the /scream command
-    """
-
-    global screaming
-    screaming = True
-
-
-async def whisper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    This function handles /whisper command
-    """
-
-    global screaming
-    screaming = False
 
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     This handler sends a menu with the inline buttons we pre-assigned above
+    """
+
+    await context.bot.send_message(
+        update.message.from_user.id,
+        FIRST_MENU,
+        parse_mode=ParseMode.HTML,
+        reply_markup=FIRST_MENU_MARKUP
+    )
+
+async def store(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    This handler processes the user input by storing it in the vector db
+    """
+
+    # Print to console
+    print(f'{update.message.from_user.first_name} wants to store: {update.message.text}')
+
+    # index the message in the vector db
+
+    # Acknowledge and return to menu
+    await context.bot.send_message(
+        update.message.from_user.id,
+        FIRST_MENU,
+        parse_mode=ParseMode.HTML,
+        reply_markup=FIRST_MENU_MARKUP
+    )
+
+async def retrieve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    This handler uses the user input to retrieve memories from the vector db
     """
 
     await context.bot.send_message(
@@ -165,8 +196,8 @@ def main() -> None:
     application = Application.builder().token(os.getenv('BOT_TOKEN')).build()
 
     # Register commands
-    application.add_handler(CommandHandler("scream", scream))
-    application.add_handler(CommandHandler("whisper", whisper))
+    application.add_handler(CommandHandler("store", store))
+    application.add_handler(CommandHandler("retrieve", retrieve))
     application.add_handler(CommandHandler("menu", menu))
 
     # Register handler for inline buttons
