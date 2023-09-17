@@ -15,15 +15,10 @@ logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 # LlamaIndex LLM/VectorStore/embeddings
 import faiss
-from langchain import OpenAI
-from langchain.llms import AzureOpenAI
+from llama_index.llms import AzureOpenAI
 from langchain.vectorstores import FAISS
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from llama_index import LangchainEmbedding, ServiceContext
-from local_embeddings import LocalHuggingFaceEmbeddings
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
-from llama_index import LangchainEmbedding
 from llama_index import set_global_service_context
 
 
@@ -37,6 +32,7 @@ from llama_index.node_parser.extractors import (
     MetadataExtractor,
     QuestionsAnsweredExtractor,
     TitleExtractor,
+    SummaryExtractor
 )
 from llama_index import Document
 from llama_index.schema import TextNode
@@ -101,22 +97,38 @@ text_splitter = SentenceSplitter(
 #    temperature = 0
 #)
 
+# initialize LLM
+llm = AzureOpenAI(
+    engine=os.getenv('OPENAI_DEPLOYMENT_NAME'), 
+    model=os.getenv('OPENAI_MODEL_NAME'),
+    temperature=0
+)
+
 # initialize embeddings 
 base_embeddings = LangchainEmbedding(
   HuggingFaceEmbeddings(model_name="thenlper/gte-base")
 )
-#service_context = ServiceContext.from_defaults(embed_model=base_embeddings, chunk_size=512)
-#set_global_service_context(service_context)
+
+# set global service context
+service_context = ServiceContext.from_defaults(
+    llm=llm,
+    embed_model=base_embeddings,
+    chunk_size=512
+)
+set_global_service_context(service_context)
 
 # initialize the vector store
-# dimensions of text-ada-embedding-002
-#d = 1536
-#faiss_index = faiss.IndexFlatL2(d)
-#vector_store = FaissVectorStore.from_persist_dir(FAISS_INDEX_PATH)
-#storage_context = StorageContext.from_defaults(
-#    vector_store=vector_store, persist_dir=FAISS_INDEX_PATH
-#)
-#index = load_index_from_storage(storage_context=storage_context, service_context=service_context)
+# dimensions of gte-base
+d = 768
+faiss_index = faiss.IndexFlatL2(d)
+vector_store = FaissVectorStore.from_persist_dir(FAISS_INDEX_PATH)
+storage_context = StorageContext.from_defaults(
+    vector_store=vector_store, persist_dir=FAISS_INDEX_PATH
+)
+index = load_index_from_storage(
+    storage_context=storage_context, 
+    service_context=service_context
+)
 
 # load database in memory
 #db = FAISS.load_local(FAISS_INDEX_PATH, base_embeddings)
@@ -217,37 +229,38 @@ async def store(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         node.metadata = src_doc.metadata
         nodes.append(node)
 
-    #metadata_extractor = MetadataExtractor(
-    #    extractors=[
-    #        TitleExtractor(nodes=5, llm=llm),
-    #        QuestionsAnsweredExtractor(questions=3, llm=llm),
-    #    ],
-    #    in_place=False,
-    #)
-    #nodes = metadata_extractor.process_nodes(nodes)
+    metadata_extractor = MetadataExtractor(
+        extractors=[
+            TitleExtractor(nodes=5, llm=llm),
+            QuestionsAnsweredExtractor(questions=3, llm=llm),
+            SummaryExtractor(summaries=["prev", "self", "next"], llm=llm)
+        ],
+        in_place=False,
+    )
+    nodes = metadata_extractor.process_nodes(nodes)
     print("Nodes:")
     print(nodes)
 
     # generate embeddings for each node
-    #for node in nodes:
-    #    node_embedding = base_embeddings.get_text_embedding(
-    #        node.get_content(metadata_mode="all")
-    #    )
-    #    node.embedding = node_embedding
+    for node in nodes:
+        node_embedding = base_embeddings.get_text_embedding(
+            node.get_content(metadata_mode="all")
+        )
+        node.embedding = node_embedding
     
     # print a sample node
-    #print(nodes[0].get_content(metadata_mode="all"))
+    print(nodes[0].get_content(metadata_mode="all"))
 
     # save the message with metadata on disk first for future re-indexing needs
-    #with open(FILE_STORAGE_PATH, 'a') as f_object:
-    #    row = {'TIMESTAMP': time.time(), 'TEXT': update.message.text}
-    #    dictwriter_object = DictWriter(f_object, fieldnames=FILE_STORAGE_FIELD_NAMES)
-    #    dictwriter_object.writerow(row)
-    #    f_object.close()
+    with open(FILE_STORAGE_PATH, 'a') as f_object:
+        row = {'TIMESTAMP': time.time(), 'TEXT': update.message.text}
+        dictwriter_object = DictWriter(f_object, fieldnames=FILE_STORAGE_FIELD_NAMES)
+        dictwriter_object.writerow(row)
+        f_object.close()
 
     # index the message in the vector db
-    #vector_store.add(nodes)
-    #index.storage_context.persist()
+    vector_store.add(nodes)
+    index.storage_context.persist()
 
 async def retrieve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
