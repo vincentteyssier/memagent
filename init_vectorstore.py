@@ -1,8 +1,13 @@
 import faiss
-import os
+import os, logging, sys
 from llama_index import Document
 from dotenv import load_dotenv
 load_dotenv()
+
+logging.basicConfig(
+    stream=sys.stdout, level=logging.INFO
+)  # logging.DEBUG for more verbose output
+logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 FAISS_INDEX_PATH="faiss_index"
 
