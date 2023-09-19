@@ -129,6 +129,7 @@ index = load_index_from_storage(
     storage_context=storage_context, 
     service_context=service_context
 )
+query_engine = index.as_query_engine()
 
 # load database in memory
 #db = FAISS.load_local(FAISS_INDEX_PATH, base_embeddings)
@@ -209,6 +210,8 @@ async def store(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     This handler processes the user input by storing it in the vector db
     """
 
+    global action
+
     # Print to console
     print(f'{update.message.from_user.first_name} wants to store: {update.message.text}')
 
@@ -247,6 +250,7 @@ async def store(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             node.get_content(metadata_mode="all")
         )
         node.embedding = node_embedding
+        print(node_embedding)
     
     # print a sample node
     print(nodes[0].get_content(metadata_mode="all"))
@@ -262,12 +266,35 @@ async def store(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     vector_store.add(nodes)
     index.storage_context.persist()
 
+    # send confirmation that the message has been stored
+    await context.bot.send_message(
+        update.message.from_user.id,
+        "Note successfully stored",
+        parse_mode=ParseMode.HTML,
+        reply_markup=""
+    )
+    # reset the action 
+    action=""
+
 async def retrieve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     This handler uses the user input to retrieve memories from the vector db
     """
+    global action
+    query = update.message.text
+    response = query_engine.query(query)
+    print(f"<b>{response}</b>")
 
-    print("Inside retrieve")
+    # reset the action
+    action = ""
+
+    # Send response to the query
+    await context.bot.send_message(
+        update.message.from_user.id,
+        response,
+        parse_mode=ParseMode.HTML,
+        reply_markup=""
+    )
 
 
 async def button_tap(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -297,10 +324,11 @@ async def button_tap(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Close the query to end the client-side loading animation
     await update.callback_query.answer()
 
-    # Update message content with corresponding menu section
-    await update.callback_query.message.edit_text(
+    # Send message prompt corresponding to the selected action
+    await context.bot.send_message(
+        update.message.from_user.id,
         text,
-        ParseMode.HTML,
+        parse_mode=ParseMode.HTML,
         reply_markup=markup
     )
 
