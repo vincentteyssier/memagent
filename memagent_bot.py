@@ -20,6 +20,8 @@ from langchain.vectorstores import FAISS
 from llama_index import LangchainEmbedding, ServiceContext
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from llama_index import set_global_service_context
+from llama_index.response.notebook_utils import display_response
+
 
 
 from llama_index import (
@@ -283,10 +285,16 @@ async def retrieve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global action
     query = update.message.text
     response = query_engine.query(query)
-    print(f"<b>{response}</b>")
 
     # reset the action
     action = ""
+
+    # display response
+    #TODO check that display_response works with stdout 
+    #TODO and what function to use to return sources and metadata in the text response
+    display_response(
+        response, source_length=1000, show_source=True, show_source_metadata=True
+    )
 
     # Send response to the query
     await context.bot.send_message(
