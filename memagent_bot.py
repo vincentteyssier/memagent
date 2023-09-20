@@ -131,7 +131,12 @@ index = load_index_from_storage(
     storage_context=storage_context, 
     service_context=service_context
 )
-query_engine = index.as_query_engine()
+
+# if threshold needed add , vector_store_kwargs={"mmr_threshold": 0.2}
+query_engine_with_threshold = index.as_query_engine(
+    vector_store_query_mode="mmr"
+)
+
 
 # load database in memory
 #db = FAISS.load_local(FAISS_INDEX_PATH, base_embeddings)
@@ -284,7 +289,7 @@ async def retrieve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     global action
     query = update.message.text
-    response = query_engine.query(query)
+    response = query_engine_with_threshold.query(query)
 
     # reset the action
     action = ""
