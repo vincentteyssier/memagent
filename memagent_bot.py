@@ -10,7 +10,7 @@ from telegram.constants import ParseMode
 
 # initialize the logger
 logger = logging.getLogger(__name__)
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 # LlamaIndex LLM/VectorStore/embeddings
@@ -21,6 +21,7 @@ from llama_index import LangchainEmbedding, ServiceContext
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
 from llama_index import set_global_service_context
 from llama_index.response.notebook_utils import display_response
+from llama_index.vector_stores import VectorStoreQuery
 
 
 
@@ -123,9 +124,9 @@ set_global_service_context(service_context)
 # dimensions of gte-base
 d = 768
 faiss_index = faiss.IndexFlatL2(d)
-vector_store = FaissVectorStore.from_persist_dir(FAISS_INDEX_PATH)
+vector_store = FaissVectorStore.from_persist_dir('./storage')
 storage_context = StorageContext.from_defaults(
-    vector_store=vector_store, persist_dir=FAISS_INDEX_PATH
+    vector_store=vector_store, persist_dir='./storage'
 )
 index = load_index_from_storage(
     storage_context=storage_context, 
@@ -136,7 +137,7 @@ index = load_index_from_storage(
 query_engine_with_threshold = index.as_query_engine(
     vector_store_query_mode="mmr"
 )
-
+query_engine = index.as_query_engine()
 
 # load database in memory
 #db = FAISS.load_local(FAISS_INDEX_PATH, base_embeddings)
@@ -218,7 +219,7 @@ async def store(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
 
     global action
-
+    
     # Print to console
     print(f'{update.message.from_user.first_name} wants to store: {update.message.text}')
 
@@ -289,7 +290,15 @@ async def retrieve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     global action
     query = update.message.text
-    response = query_engine_with_threshold.query(query)
+    #query_mode = "default"
+    #query_embedding = base_embeddings.get_query_embedding(query)
+    #vector_store_query = VectorStoreQuery(
+    #    query_embedding=query_embedding, similarity_top_k=3, mode=query_mode
+    #)
+    #response = vector_store.query(vector_store_query)
+    #print(response)
+    response = query_engine.query(query)
+    print(response)
 
     # reset the action
     action = ""
@@ -337,9 +346,10 @@ async def button_tap(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Close the query to end the client-side loading animation
     await update.callback_query.answer()
 
+    print(update)
     # Send message prompt corresponding to the selected action
     await context.bot.send_message(
-        update.message.from_user.id,
+        update.callback_query.from_user.id,
         text,
         parse_mode=ParseMode.HTML,
         reply_markup=markup
