@@ -9,7 +9,7 @@ logging.basicConfig(
 )  # logging.DEBUG for more verbose output
 logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
-FAISS_INDEX_PATH="faiss_index"
+FAISS_INDEX_PATH="./storage"
 
 d = 768
 faiss_index = faiss.IndexFlatL2(d)
@@ -51,9 +51,33 @@ service_context = ServiceContext.from_defaults(
 set_global_service_context(service_context)
 
 
-documents=[Document(text="This is my initialization message")]
+documents=[
+    Document(text="This is my initialization message"),
+    Document(text="This is my initialization message1"),
+    Document(text="This is my initialization message2"),
+    Document(text="This is my initialization message3"),
+    Document(text="This is my initialization message4"),
+    Document(text="This is my initialization message5"),
+    Document(text="This is my initialization message6"),
+    Document(text="This is my initialization message7"),
+    Document(text="This is my initialization message8"),
+    Document(text="This is my initialization message9"),
+    Document(text="This is my initialization message10"),
+]
 
 vector_store = FaissVectorStore(faiss_index=faiss_index)
 storage_context = StorageContext.from_defaults(vector_store=vector_store)
 index = VectorStoreIndex.from_documents(documents, storage_context=storage_context)
 index.storage_context.persist(persist_dir=FAISS_INDEX_PATH) 
+
+
+vector_store = FaissVectorStore.from_persist_dir("./storage")
+storage_context = StorageContext.from_defaults(
+    vector_store=vector_store, persist_dir="./storage"
+)
+index = load_index_from_storage(storage_context=storage_context, service_context=service_context)
+
+query_engine = index.as_query_engine()
+response = query_engine.query("What did the author do growing up?")
+display(Markdown(f"<b>{response}</b>"))
+
